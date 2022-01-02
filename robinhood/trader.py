@@ -1,3 +1,5 @@
+import datetime
+
 from .order import Order
 from .quote import Quote, HistoricalQuote
 
@@ -25,6 +27,7 @@ class Trader:
     ###########################################################################
 
     def __init__(self, username=None, password=None):
+        self.expires_at = datetime.datetime.now(datetime.timezone.utc)
         self._crypto_trader = CryptoTrader(self)
         self.auth_token = None
         self.session = requests.session()
@@ -94,6 +97,8 @@ class Trader:
             self.auth_token = data['access_token']
             self.refresh_token = data['refresh_token']
             self.session.headers['Authorization'] = 'Bearer ' + self.auth_token
+            self.expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                seconds=data['expires_in'])
             return res
 
         return False
