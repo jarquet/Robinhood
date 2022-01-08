@@ -19,7 +19,8 @@ from .crypto_trader import CryptoTrader
 from .detail.common import _datelike_to_datetime
 
 
-EXPIRATION_TIME = 2*60*60
+# EXPIRATION_TIME = 7*24*60*60
+EXPIRATION_TIME = 5 * 60
 
 
 class Trader:
@@ -111,7 +112,7 @@ class Trader:
 
         return False
 
-    def _refresh_oauth2(self) -> None:
+    def _refresh_oauth2(self) -> requests.Response:
         """Refresh an oauth2 token.
 
         Raises:
@@ -132,9 +133,11 @@ class Trader:
         res = self.session.post(
             endpoints.login(), data=relogin_payload, timeout=self.request_timeout, verify=True
         )
-        if "error" in res:
+        if "error" in res.json():
+            self.refresh_token = None
             raise RuntimeError("Failed to refresh token")
         self._process_login_response_data(res.json())
+        return res
 
     def logout(self):
         """Logout from robinhood
@@ -150,6 +153,7 @@ class Trader:
         res = self.session.post(endpoints.logout(), data=payload, timeout=self.request_timeout)
         self.session.headers['Authorization'] = None
         self.auth_token = None
+        self.refresh_token = None
         res.raise_for_status()
         return res
 
@@ -158,6 +162,10 @@ class Trader:
 
         if not res:
             print(res.text)
+            session_expired = self.expires_at < datetime.datetime.utcnow().astimezone(datetime.timezone.utc)
+            if res.status_code == 401 and session_expired and self.refresh_token:
+                self._refresh_oauth2()
+                return self._req_get(*args, timeout=timeout, asjson=asjson, **kwargs)
             res.raise_for_status()
         return res.json() if asjson else res
 
@@ -175,6 +183,10 @@ class Trader:
             if 'data' in kwargs:
                 print('payload:', kwargs['data'])
 
+            session_expired = self.expires_at < datetime.datetime.utcnow().astimezone(datetime.timezone.utc)
+            if res.status_code == 401 and session_expired and self.refresh_token:
+                self._refresh_oauth2()
+                return self._req_post(*args, timeout=timeout, asjson=asjson, **kwargs)
             res.raise_for_status()
         return res.json() if asjson else res
 
