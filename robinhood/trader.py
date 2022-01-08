@@ -18,6 +18,10 @@ from .crypto_trader import CryptoTrader
 
 from .detail.common import _datelike_to_datetime
 
+
+EXPIRATION_TIME = 2*60*60
+
+
 class Trader:
 
     client_id = "c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS"
@@ -48,6 +52,14 @@ class Trader:
         if username:
             self.login(username, password)
 
+    def _process_login_response_data(self, data):
+        self.auth_token = data['access_token']
+        self.refresh_token = data['refresh_token']
+        self.session.headers['Authorization'] = 'Bearer ' + self.auth_token
+        self.expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+            seconds=data['expires_in'])
+        return
+
     def login(self, username=None, password=None, mfa_code=None, device_token=None):
         """Login to Robinhood
         Args:
@@ -72,7 +84,7 @@ class Trader:
             'grant_type': 'password',
             'device_token': device_token.hex,
             "token_type": "Bearer",
-            'expires_in': 603995,
+            'expires_in': EXPIRATION_TIME,
             "scope": "internal",
             'client_id': self.client_id,
         }
@@ -94,14 +106,35 @@ class Trader:
             return self.login(username, password, mfa_code, device_token)
 
         if 'access_token' in data.keys() and 'refresh_token' in data.keys():
-            self.auth_token = data['access_token']
-            self.refresh_token = data['refresh_token']
-            self.session.headers['Authorization'] = 'Bearer ' + self.auth_token
-            self.expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-                seconds=data['expires_in'])
+            self._process_login_response_data(data)
             return res
 
         return False
+
+    def _refresh_oauth2(self) -> None:
+        """Refresh an oauth2 token.
+
+        Raises:
+            AuthenticationError: If refresh_token is missing or if there is an error
+                when trying to refresh a token.
+
+        """
+        if self.refresh_token is None:
+            raise RuntimeError("Cannot refresh login with unset refresh token")
+        relogin_payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": self.refresh_token,
+            "scope": "internal",
+            "client_id": self.client_id,
+            "expires_in": EXPIRATION_TIME,
+        }
+        self.session.headers.pop("Authorization", None)
+        res = self.session.post(
+            endpoints.login(), data=relogin_payload, timeout=self.request_timeout, verify=True
+        )
+        if "error" in res:
+            raise RuntimeError("Failed to refresh token")
+        self._process_login_response_data(res.json())
 
     def logout(self):
         """Logout from robinhood
