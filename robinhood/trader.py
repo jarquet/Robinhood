@@ -20,7 +20,7 @@ from .detail.common import _datelike_to_datetime
 
 
 # EXPIRATION_TIME = 7*24*60*60
-EXPIRATION_TIME = 5 * 60
+EXPIRATION_TIME = 5 * 60 * 60
 
 
 class Trader:
@@ -31,7 +31,7 @@ class Trader:
     #                       Logging in and initializing
     ###########################################################################
 
-    def __init__(self, username=None, password=None):
+    def __init__(self, username=None, password=None, session_path=''):
         self.expires_at = datetime.datetime.now(datetime.timezone.utc)
         self._crypto_trader = CryptoTrader(self)
         self.auth_token = None
@@ -52,6 +52,7 @@ class Trader:
             assert username
         if username:
             self.login(username, password)
+        self.session_path = session_path
 
     def _process_login_response_data(self, data):
         self.auth_token = data['access_token']
@@ -59,6 +60,8 @@ class Trader:
         self.session.headers['Authorization'] = 'Bearer ' + self.auth_token
         self.expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
             seconds=data['expires_in'])
+        if self.session_path:
+            self.save_session(self.session_path)
         return
 
     def login(self, username=None, password=None, mfa_code=None, device_token=None):
@@ -135,6 +138,7 @@ class Trader:
         )
         if "error" in res.json():
             self.refresh_token = None
+            self.auth_token = None
             raise RuntimeError("Failed to refresh token")
         self._process_login_response_data(res.json())
         return res
@@ -204,6 +208,7 @@ class Trader:
     def save_session(self, session_name):
         """Save your python session to avoid logging in again,
             reload with `Trader.load_session(session_name)`"""
+        self.session_path = session_name
         with open(session_name, 'wb') as file:
             pickle.dump(self, file)
 
@@ -221,17 +226,53 @@ class Trader:
         """Fetch fundamentals info"""
         return self._req_get(endpoints.fundamentals(symbol.upper()))
 
-    def instrument(self, symbol):
+    def instrument(self, instrument_id='', symbol=''):
         """Fetch instrument info"""
-        url = str(endpoints.instruments()) + "?symbol=" + str(symbol)
-        results = self._req_get(url)['results'][0]
-        return results if results else Exception(f"Invalid symbol: {symbol}")
+        if instrument_id:
+            url = str(endpoints.instruments(instrumentId=instrument_id))
+            results = self._req_get(url)['results'][0]
+            return results if results else Exception(f"Invalid instrument id: {instrument_id}")
+        elif symbol:
+            url = str(endpoints.instruments(option=f"?symbol={symbol}"))
+            results = self._req_get(url)['results'][0]
+            return results if results else Exception(f"Invalid symbol: {symbol}")
+        else:
+            url = str(endpoints.instruments())
+            results = self._req_get(url)['results']
+            return results
 
     def quote(self, symbol):
         """Fetch stock quote"""
         symbol = symbol.upper()
         url = str(endpoints.quotes()) + f"?symbols={symbol}"
         return Quote(self._req_get(url)['results'][0])
+
+    def quotes(self, symbols):
+        """Fetch quote for multiple stocks, in one single Robinhood API call.
+
+        Args:
+            symbols (list<str>): stock tickers
+
+        Returns:
+            (:obj:`list` of :obj:`dict`): List of JSON contents from `quotes` \
+                endpoint, in the same order of input args. If any ticker is \
+                invalid, a None will occur at that position.
+
+        """
+
+        url = str(endpoints.quotes()) + "?symbols=" + ",".join(symbols)
+
+        try:
+            results = []
+            data = self._req_get(url)
+            while 'results' in data:
+                results.extend(data.pop('results', []))
+                if 'next' in data:
+                    data = self._req_get(data['next'])
+        except requests.exceptions.HTTPError:
+            raise
+
+        return data["results"]
 
     def orderbook(self, symbol):
         """Returns the orderbook json, only valid for gold users, not supported for crypto"""
@@ -328,8 +369,13 @@ class Trader:
         return self._req_get(endpoints.portfolios())['results'][0]
 
     def orders(self):
-        orders = self._req_get(endpoints.orders())['results']
-        return [Order(self, order, False) for order in orders]
+        orders = []
+        raw_orders = self._req_get(endpoints.orders())
+        while 'results' in raw_orders:
+            orders.extend([Order(self, order, False) for order in raw_orders.pop('results', [])])
+            if 'next' in raw_orders:
+                raw_orders = self._req_get(raw_orders['next'])
+        return orders
 
     def order(self, order:[dict, str]):
         order_id = order['id'] if isinstance(order, dict) else order
@@ -339,8 +385,11 @@ class Trader:
     def dividends(self):
         return self._req_get(endpoints.orders())
 
-    def positions(self):
-        return self._req_get(endpoints.positions())
+    def positions(self, non_zero=True):
+        url = endpoints.positions()
+        if non_zero:
+            url += "?nonzero=true"
+        return self._req_get(url)
 
     ###########################################################################
     #                               PLACE ORDER
