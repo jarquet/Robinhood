@@ -373,7 +373,7 @@ class Trader:
         raw_orders = self._req_get(endpoints.orders())
         while 'results' in raw_orders:
             orders.extend([Order(self, order, False) for order in raw_orders.pop('results', [])])
-            if 'next' in raw_orders:
+            if 'next' in raw_orders and raw_orders['next']:
                 raw_orders = self._req_get(raw_orders['next'])
         return orders
 
