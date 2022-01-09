@@ -5,6 +5,7 @@ from .common.ticker import Ticker
 
 class OrderBase(ConstDict):
 	def __init__(self, order: dict, init_local_time=True):
+		self.order_dict = order
 		if init_local_time:
 			order['time'] = timestamp_now()
 		ConstDict.__init__(self, order)
