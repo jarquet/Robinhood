@@ -20,7 +20,7 @@ from .detail.common import _datelike_to_datetime
 
 
 # EXPIRATION_TIME = 7*24*60*60
-EXPIRATION_TIME = 5 * 60 * 60
+EXPIRATION_TIME = 35 * 24 * 60 * 60  # I think it caps at 232 hours (9 days 16ish hours)
 
 
 class Trader:
