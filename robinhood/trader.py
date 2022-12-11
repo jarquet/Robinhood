@@ -230,11 +230,11 @@ class Trader:
         """Fetch instrument info"""
         if instrument_id:
             url = str(endpoints.instruments(instrumentId=instrument_id))
-            results = self._req_get(url)['results'][0]
+            results = self._req_get(url)
             return results if results else Exception(f"Invalid instrument id: {instrument_id}")
         elif symbol:
             url = str(endpoints.instruments(option=f"?symbol={symbol}"))
-            results = self._req_get(url)['results'][0]
+            results = self._req_get(url)
             return results if results else Exception(f"Invalid symbol: {symbol}")
         else:
             url = str(endpoints.instruments())
