@@ -238,7 +238,7 @@ class Trader:
             return results if results else Exception(f"Invalid symbol: {symbol}")
         else:
             url = str(endpoints.instruments())
-            results = self._req_get(url)['results']
+            results = self._req_get(url)
             return results
 
     def quote(self, symbol):
