@@ -272,7 +272,7 @@ class Trader:
         except requests.exceptions.HTTPError:
             raise
 
-        return data["results"]
+        return results
 
     def orderbook(self, symbol):
         """Returns the orderbook json, only valid for gold users, not supported for crypto"""
